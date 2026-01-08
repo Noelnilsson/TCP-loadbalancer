@@ -7,7 +7,7 @@
         },
         {
             "address": "localhost:9002",
-            "weight": 1
+            "weight": 3
         },
         {
             "address": "localhost:9003",
@@ -15,7 +15,7 @@
         },
         {
             "address": "localhost:9004",
-            "weight": 1
+            "weight": 2
         }
     ],
     "health_check_interval_seconds": 10,

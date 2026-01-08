@@ -10,6 +10,7 @@ import (
 
 	"tcp_lb/backend"
 	"tcp_lb/config"
+	"tcp_lb/loadbalancer"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -18,6 +19,7 @@ import (
 // App represents the TUI application.
 type App struct {
 	app            *tview.Application
+	lb             *loadbalancer.LoadBalancer
 	pool           *backend.Pool
 	config         *config.Config
 	lbAddr         string
@@ -28,21 +30,25 @@ type App struct {
 	logView        *tview.TextView
 	statusBar      *tview.TextView
 	timersView     *tview.TextView
+	serverInfo     *tview.TextView
 
 	// State
-	logs           []string
+	logs            []string
 	lastHealthCheck time.Time
+	currentAlgo     string
 }
 
 // NewApp creates a new TUI application.
-func NewApp(pool *backend.Pool, cfg *config.Config) *App {
+func NewApp(lb *loadbalancer.LoadBalancer, cfg *config.Config) *App {
 	return &App{
-		app:            tview.NewApplication(),
-		pool:           pool,
-		config:         cfg,
-		lbAddr:         cfg.ListenAddr,
-		logs:           make([]string, 0),
+		app:             tview.NewApplication(),
+		lb:              lb,
+		pool:            lb.GetPool(),
+		config:          cfg,
+		lbAddr:          cfg.ListenAddr,
+		logs:            make([]string, 0),
 		lastHealthCheck: time.Now(),
+		currentAlgo:     "Round Robin",
 	}
 }
 
@@ -56,19 +62,10 @@ func (a *App) Run() error {
 	header.SetBorder(true).SetBorderColor(tcell.ColorDarkCyan)
 
 	// Create server info panel
-	serverInfo := tview.NewTextView().
-		SetDynamicColors(true).
-		SetText(fmt.Sprintf(
-			"[yellow::b]Server Info[-:-:-]\n"+
-				"[white]Listen Address:[gray]  %s\n"+
-				"[white]Algorithm:[gray]       Round Robin\n"+
-				"[white]Health Interval:[gray] %v\n"+
-				"[white]Connect Timeout:[gray] %v",
-			a.lbAddr,
-			a.config.HealthCheckInterval,
-			a.config.ConnectTimeout,
-		))
-	serverInfo.SetBorder(true).SetBorderColor(tcell.ColorDarkCyan).SetTitle(" [::b]Load Balancer ")
+	a.serverInfo = tview.NewTextView().
+		SetDynamicColors(true)
+	a.serverInfo.SetBorder(true).SetBorderColor(tcell.ColorDarkCyan).SetTitle(" [::b]Load Balancer ")
+	a.refreshServerInfo()
 
 	// Create backend table
 	a.backendTable = tview.NewTable().
@@ -97,7 +94,7 @@ func (a *App) Run() error {
 
 	// Left panel with server info and backends
 	leftPanel := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(serverInfo, 7, 0, false).
+		AddItem(a.serverInfo, 7, 0, false).
 		AddItem(a.backendTable, 0, 1, false)
 
 	// Right panel with timers and log
@@ -334,9 +331,24 @@ func (a *App) updateStatusBar() {
 		totalConns += b.GetActiveConnections()
 	}
 
-	status := fmt.Sprintf(" [green]●[-] %d/%d backends | [yellow]%d[-] active connections | Algorithm: [cyan]Round Robin[-] ",
-		healthy, len(backends), totalConns)
+	status := fmt.Sprintf(" [green]●[-] %d/%d backends | [yellow]%d[-] active connections | Algorithm: [cyan]%s[-] ",
+		healthy, len(backends), totalConns, a.currentAlgo)
 	a.statusBar.SetText(status)
+}
+
+// refreshServerInfo updates the server info panel.
+func (a *App) refreshServerInfo() {
+	a.serverInfo.SetText(fmt.Sprintf(
+		"[yellow::b]Server Info[-:-:-]\n"+
+			"[white]Listen Address:[gray]  %s\n"+
+			"[white]Algorithm:[gray]       %s\n"+
+			"[white]Health Interval:[gray] %v\n"+
+			"[white]Connect Timeout:[gray] %v",
+		a.lbAddr,
+		a.currentAlgo,
+		a.config.HealthCheckInterval,
+		a.config.ConnectTimeout,
+	))
 }
 
 // sendTraffic sends a test connection through the load balancer.
@@ -390,21 +402,57 @@ func (a *App) restartSimulation() {
 
 // showAlgorithmModal displays the algorithm selection modal.
 func (a *App) showAlgorithmModal() {
-	modal := tview.NewModal().
-		SetText("Load Balancing Algorithms\n\n[*] Round Robin (active)\n[ ] Least Connections (TODO)\n[ ] Weighted RR (TODO)\n[ ] IP Hash (TODO)").
-		AddButtons([]string{"OK"}).
-		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-			a.app.SetRoot(a.mainLayout, true)
-			a.addLog("[gray]Algorithm unchanged: Round Robin[-]")
-		})
-	modal.SetBorder(true).SetTitle(" Algorithms ")
+	algorithms := []struct {
+		name string
+		algo loadbalancer.Algorithm
+	}{
+		{"Round Robin", loadbalancer.NewRoundRobin()},
+		{"Least Connections", loadbalancer.NewLeastConnections()},
+		{"Weighted Round Robin", loadbalancer.NewWeightedRoundRobin()},
+	}
 
-	// Create a page to show modal over existing content
+	list := tview.NewList()
+	for i, alg := range algorithms {
+		name := alg.name
+		if name == a.currentAlgo {
+			name = "[cyan]" + name + " (active)[-]"
+		}
+		list.AddItem(name, "", rune('1'+i), nil)
+	}
+
+	list.SetSelectedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {
+		selected := algorithms[index]
+		a.lb.SetAlgorithm(selected.algo)
+		a.currentAlgo = selected.name
+		a.refreshServerInfo()
+		a.addLog(fmt.Sprintf("[green]Algorithm changed to: %s[-]", selected.name))
+		a.app.SetRoot(a.mainLayout, true)
+	})
+
+	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape {
+			a.app.SetRoot(a.mainLayout, true)
+			return nil
+		}
+		return event
+	})
+
+	list.SetBorder(true).SetTitle(" Select Algorithm (ESC to cancel) ")
+
+	// Center the list in a modal-like layout
+	modal := tview.NewFlex().
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
+			AddItem(nil, 0, 1, false).
+			AddItem(list, 7, 0, true).
+			AddItem(nil, 0, 1, false), 40, 0, true).
+		AddItem(nil, 0, 1, false)
+
 	pages := tview.NewPages().
 		AddPage("main", a.mainLayout, true, true).
 		AddPage("modal", modal, true, true)
 
-	a.app.SetRoot(pages, true)
+	a.app.SetRoot(pages, true).SetFocus(list)
 }
 
 // addLog adds a timestamped message to the log view.

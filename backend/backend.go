@@ -61,6 +61,15 @@ func (b *Backend) getAddress() string {
 	return b.Address
 }
 
+// getAWeight returns the backend weight used for Weighted-Roud-Robin
+// This method is thread-safe.
+func (b *Backend) GetWeight() int {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	return b.Weight
+}
+
 // IsAlive returns true if the backend is currently marked as healthy.
 // This method is thread-safe.
 func (b *Backend) IsAlive() bool {

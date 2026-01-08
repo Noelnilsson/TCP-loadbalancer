@@ -55,7 +55,7 @@ func Run() error {
 	go lb.GetPool().SimulateRandomBackendFailureAndRecoveryLoop()
 
 	// Create and run TUI
-	app := NewApp(lb.GetPool(), cfg)
+	app := NewApp(lb, cfg)
 	if err := app.Run(); err != nil {
 		lb.Stop()
 		return err
