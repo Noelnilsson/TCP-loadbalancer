@@ -9,23 +9,30 @@ import (
 
 // StartServer starts a simple echo server on the given address.
 // Blocks until the server is stopped, so run in a goroutine.
-func StartServer(address string) error {
-	listener, err := net.Listen("tcp", address)
+func StartServer(b *Backend) error {
+	listener, err := net.Listen("tcp", b.getAddress())
 	if err != nil {
 		return fmt.Errorf("failed to start backend server: %w", err)
 	}
 	defer listener.Close()
 
-	log.Printf("[Backend %s] Listening", address)
+	log.Printf("[Backend %s] Listening", b.getAddress())
 
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			log.Printf("[Backend %s] Accept error: %v", address, err)
+			log.Printf("[Backend %s] Accept error: %v", b.getAddress(), err)
 			continue
 		}
 
-		go handleConnection(conn, address)
+		// Check if the server is "alive". If not, wait until it is resurrected.
+		b.mu.Lock()
+		for !b.Alive {
+			b.cond.Wait()
+		}
+		b.mu.Unlock()
+
+		go handleConnection(conn, b.getAddress())
 	}
 }
 

@@ -1,19 +1,78 @@
 package backend
 
 import (
+	"math/rand"
 	"sync"
+	"time"
 )
+
+// EventType represents the type of pool event
+type EventType int
+
+const (
+	EventBackendDown EventType = iota
+	EventBackendRecovered
+)
+
+// PoolEvent represents an event that occurred in the pool
+type PoolEvent struct {
+	Type    EventType
+	Backend string
+	Time    time.Time
+}
+
+// EventCallback is a function that handles pool events
+type EventCallback func(event PoolEvent)
 
 // Pool manages a collection of backend servers.
 // It provides thread-safe access to the backends and tracks which ones are healthy.
 type Pool struct {
-	backends []*Backend   // All configured backends
-	mu       sync.RWMutex // Protects the backends slice
+	backends      []*Backend    // All configured backends
+	mu            sync.RWMutex  // Protects the backends slice
+	eventCallback EventCallback // Optional callback for events
+
+	// Simulation state
+	pausedBackend    string    // Address of currently paused backend (empty if none)
+	pauseStartTime   time.Time // When the current pause started
+	pauseDuration    time.Duration // How long the current pause will last
+	nextPauseTime    time.Time // When the next pause cycle will start
 }
 
 // NewPool creates a new empty backend pool.
 func NewPool() *Pool {
-	return new(Pool)
+	return &Pool{
+		nextPauseTime: time.Now().Add(5 * time.Second), // First pause after 5s initial delay
+	}
+}
+
+// SetEventCallback sets the callback function for pool events.
+func (p *Pool) SetEventCallback(callback EventCallback) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.eventCallback = callback
+}
+
+// GetPauseState returns the current pause simulation state.
+// Returns: pausedBackend (empty if none), pauseStartTime, pauseDuration, nextPauseTime
+func (p *Pool) GetPauseState() (string, time.Time, time.Duration, time.Time) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.pausedBackend, p.pauseStartTime, p.pauseDuration, p.nextPauseTime
+}
+
+// emitEvent sends an event to the callback if one is registered.
+func (p *Pool) emitEvent(eventType EventType, backendAddr string) {
+	p.mu.RLock()
+	callback := p.eventCallback
+	p.mu.RUnlock()
+
+	if callback != nil {
+		callback(PoolEvent{
+			Type:    eventType,
+			Backend: backendAddr,
+			Time:    time.Now(),
+		})
+	}
 }
 
 // AddBackend adds a new backend to the pool.
@@ -85,6 +144,18 @@ func (p *Pool) GetBackendByAddress(address string) *Backend {
 	return nil
 }
 
+func (p *Pool) GetRandomBackend() *Backend {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	backends := p.backends
+	if len(backends) == 0 {
+		return nil
+	}
+
+	return backends[rand.Intn(len(backends))]
+}
+
 // Size returns the total number of backends in the pool.
 // This method is thread-safe.
 func (p *Pool) Size() int {
@@ -93,7 +164,6 @@ func (p *Pool) Size() int {
 
 	return len(p.backends)
 }
-
 
 // HealthyCount returns the number of currently healthy backends.
 // This method is thread-safe.
@@ -109,6 +179,83 @@ func (p *Pool) HealthyCount() int {
 	}
 
 	return healthyCount
+}
+
+// simulateRandomBackendFailureAndRecovery simulates a random backend failure and recovery.
+// This method is thread-safe.
+func (p *Pool) simulateRandomBackendFailureAndRecovery() {
+	randomBackend := p.GetRandomBackend()
+	if randomBackend == nil {
+		return
+	}
+
+	// Calculate pause duration (15-20 seconds)
+	pauseDuration := time.Duration(15+rand.Intn(6)) * time.Second
+
+	// Update pause state
+	p.mu.Lock()
+	p.pausedBackend = randomBackend.Address
+	p.pauseStartTime = time.Now()
+	p.pauseDuration = pauseDuration
+	p.mu.Unlock()
+
+	// Set backend to simulated down (health check won't override)
+	randomBackend.SetSimulatedDown(true)
+	p.emitEvent(EventBackendDown, randomBackend.Address)
+
+	// Wait for pause duration
+	time.Sleep(pauseDuration)
+
+	// Recover backend from simulated down
+	randomBackend.SetSimulatedDown(false)
+	p.emitEvent(EventBackendRecovered, randomBackend.Address)
+
+	// Clear pause state
+	p.mu.Lock()
+	p.pausedBackend = ""
+	p.mu.Unlock()
+}
+
+// SimulateRandomBackendFailureAndRecoveryLoop simulates a random backend failure and recovery in a loop.
+func (p *Pool) SimulateRandomBackendFailureAndRecoveryLoop() {
+	// Initial delay before first pause
+	time.Sleep(5 * time.Second)
+
+	for {
+		// Update next pause time
+		p.mu.Lock()
+		p.nextPauseTime = time.Now()
+		p.mu.Unlock()
+
+		p.simulateRandomBackendFailureAndRecovery()
+
+		// Update next pause time for the gap
+		p.mu.Lock()
+		p.nextPauseTime = time.Now().Add(25 * time.Second)
+		p.mu.Unlock()
+
+		time.Sleep(25 * time.Second)
+	}
+}
+
+// RestartSimulation resets the simulation state.
+// If a backend is currently paused, it will be recovered immediately.
+// The next pause will be scheduled after the initial delay (5 seconds).
+func (p *Pool) RestartSimulation() {
+	p.mu.Lock()
+	pausedAddr := p.pausedBackend
+	p.pausedBackend = ""
+	p.nextPauseTime = time.Now().Add(5 * time.Second)
+	p.mu.Unlock()
+
+	// If a backend was paused, recover it
+	if pausedAddr != "" {
+		backend := p.GetBackendByAddress(pausedAddr)
+		if backend != nil {
+			backend.SetSimulatedDown(false)
+			p.emitEvent(EventBackendRecovered, pausedAddr)
+		}
+	}
 }
 
 // MarkAllHealthy sets all backends in the pool to alive status.

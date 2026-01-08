@@ -9,6 +9,7 @@ import (
 
 // Proxy handles bidirectional data transfer between a client and a backend.
 // It copies data in both directions simultaneously until one side closes.
+// When either side closes, both connections are closed to prevent deadlocks.
 func Proxy(client net.Conn, backend net.Conn) error {
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -18,6 +19,10 @@ func Proxy(client net.Conn, backend net.Conn) error {
 	go func() {
 		defer wg.Done()
 		_, err := io.Copy(backend, client)
+		// When client closes, close backend write side to unblock the backend server
+		if tcpConn, ok := backend.(*net.TCPConn); ok {
+			tcpConn.CloseWrite()
+		}
 		if err != nil && err != io.EOF {
 			errCh <- err
 		}
@@ -27,6 +32,10 @@ func Proxy(client net.Conn, backend net.Conn) error {
 	go func() {
 		defer wg.Done()
 		_, err := io.Copy(client, backend)
+		// When backend closes, close client write side
+		if tcpConn, ok := client.(*net.TCPConn); ok {
+			tcpConn.CloseWrite()
+		}
 		if err != nil && err != io.EOF {
 			errCh <- err
 		}

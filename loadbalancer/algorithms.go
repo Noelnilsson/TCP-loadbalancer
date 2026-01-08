@@ -5,18 +5,17 @@ import (
 	"tcp_lb/backend"
 )
 
-
 type Algorithm interface {
 	NextBackend(pool *backend.Pool) *backend.Backend
 }
 
 // =============================================================================
-// ROUND ROBIN ALGORITHM 
+// ROUND ROBIN ALGORITHM
 // =============================================================================
 
 type RoundRobin struct {
-	current uint64     // The index of the next backend to use
-	mu      sync.Mutex 
+	current uint64 // The index of the next backend to use
+	mu      sync.Mutex
 }
 
 func NewRoundRobin() *RoundRobin {

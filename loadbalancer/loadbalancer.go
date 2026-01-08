@@ -2,7 +2,7 @@ package loadbalancer
 
 import (
 	"errors"
-	"fmt"
+	"log"
 	"net"
 	"tcp_lb/backend"
 	"tcp_lb/config"
@@ -12,11 +12,11 @@ import (
 
 // LoadBalancer is the main struct that coordinates all load balancing operations.
 type LoadBalancer struct {
-	config     *config.Config 
-	pool       *backend.Pool  
-	algorithm  Algorithm      
-	listener   net.Listener   
-	healthStop chan struct{}  
+	config     *config.Config
+	pool       *backend.Pool
+	algorithm  Algorithm
+	listener   net.Listener
+	healthStop chan struct{}
 }
 
 // New creates a new LoadBalancer with the given configuration.
@@ -65,7 +65,7 @@ func (lb *LoadBalancer) Start() error {
 				return nil
 			}
 
-			fmt.Printf("Accept error: %v\n", err)
+			log.Printf("Accept error: %v\n", err)
 			time.Sleep(50 * time.Millisecond)
 			continue
 		}
@@ -87,26 +87,41 @@ func (lb *LoadBalancer) Stop() error {
 
 // handleConnection processes a single client connection.
 // It selects a backend, establishes a connection to it, and proxies data bidirectionally.
+// If the selected backend fails, it marks it as unhealthy and retries with another backend.
 func (lb *LoadBalancer) handleConnection(clientConn net.Conn) {
 	defer clientConn.Close()
 
-	nextBackend := lb.algorithm.NextBackend(lb.pool)
-	if nextBackend == nil {
-		fmt.Println("No backend available for connection")
+	// Try up to pool size times to find a working backend
+	maxRetries := lb.pool.Size()
+	var lastErr error
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		nextBackend := lb.algorithm.NextBackend(lb.pool)
+		if nextBackend == nil {
+			log.Println("No backend available for connection")
+			return
+		}
+
+		backendConn, err := nextBackend.Dial(lb.config.ConnectTimeout)
+		if err != nil {
+			// Mark backend as unhealthy (passive health check)
+			nextBackend.SetAlive(false)
+			log.Printf("Backend %s is down, marking unhealthy (attempt %d/%d)",
+				nextBackend.Address, attempt+1, maxRetries)
+			lastErr = err
+			continue // Try another backend
+		}
+
+		// Success - track and proxy the connection
+		nextBackend.AddConnection(backendConn)
+		defer nextBackend.RemoveConnection(backendConn)
+		defer backendConn.Close()
+
+		proxy.Proxy(clientConn, backendConn)
 		return
 	}
 
-	nextBackend.IncrementConnections()
-	defer nextBackend.DecrementConnections()
-
-	backendConn, err := nextBackend.Dial(lb.config.ConnectTimeout)
-	if err != nil {
-		fmt.Println("Could not establish a connection to the server: ", nextBackend.Address)
-		return
-	}
-	defer backendConn.Close()
-
-	proxy.Proxy(clientConn, backendConn)
+	log.Printf("All backends failed, last error: %v", lastErr)
 }
 
 // GetPool returns the backend pool for external access (e.g., stats).
