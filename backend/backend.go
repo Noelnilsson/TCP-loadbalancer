@@ -7,11 +7,10 @@ import (
 	"time"
 )
 
-// ErrBackendDown is returned when attempting to dial a backend that is simulated down.
+// ErrBackendDown is returned when a backend is simulated down.
 var ErrBackendDown = errors.New("backend is down")
 
-// Backend represents a single backend server that can receive proxied connections.
-// It tracks health status, active connections, and statistics.
+// Backend represents a backend server that receives proxied connections.
 type Backend struct {
 	Address          string                // The backend address in "host:port" format
 	Weight           int                   // Weight for weighted round-robin algorithm
@@ -25,7 +24,6 @@ type Backend struct {
 }
 
 // NewBackend creates a new Backend with the given address.
-// The backend starts in an alive state with weight 1.
 func NewBackend(address string) *Backend {
 	b := &Backend{
 		Address:         address,
@@ -38,8 +36,7 @@ func NewBackend(address string) *Backend {
 	return b
 }
 
-// NewBackendWithWeight creates a new Backend with a custom weight.
-// Weight determines how much traffic this backend receives in weighted round-robin.
+// NewBackendWithWeight creates a Backend with a custom weight.
 func NewBackendWithWeight(address string, weight int) *Backend {
 	b := &Backend{
 		Address:         address,
@@ -52,8 +49,7 @@ func NewBackendWithWeight(address string, weight int) *Backend {
 	return b
 }
 
-// getAddress returns the backend address
-// This method is thread-safe.
+// getAddress returns the backend address.
 func (b *Backend) getAddress() string {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -61,8 +57,7 @@ func (b *Backend) getAddress() string {
 	return b.Address
 }
 
-// getAWeight returns the backend weight used for Weighted-Roud-Robin
-// This method is thread-safe.
+// GetWeight returns the backend weight.
 func (b *Backend) GetWeight() int {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -70,8 +65,7 @@ func (b *Backend) GetWeight() int {
 	return b.Weight
 }
 
-// IsAlive returns true if the backend is currently marked as healthy.
-// This method is thread-safe.
+// IsAlive returns whether the backend is healthy.
 func (b *Backend) IsAlive() bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -80,7 +74,6 @@ func (b *Backend) IsAlive() bool {
 }
 
 // SetAlive updates the backend's health status.
-// This method is thread-safe.
 func (b *Backend) SetAlive(alive bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -99,11 +92,8 @@ func (b *Backend) SetAlive(alive bool) {
 	}
 }
 
-// SetSimulatedDown marks the backend as down due to simulation.
-// When simulated down, Dial() will fail and health checks will not override Alive.
-// IMPORTANT: This does NOT immediately set Alive=false - the LB must discover
-// the failure through a failed connection attempt (realistic behavior).
-// This method is thread-safe.
+// SetSimulatedDown marks the backend as down for testing.
+// Dial() will fail when simulated down, but Alive is discovered through connection attempts.
 func (b *Backend) SetSimulatedDown(down bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -124,7 +114,7 @@ func (b *Backend) SetSimulatedDown(down bool) {
 	}
 }
 
-// AddConnection adds a connection to the tracking map.
+// AddConnection adds a connection to tracking and increments total count.
 func (b *Backend) AddConnection(conn net.Conn) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -142,7 +132,6 @@ func (b *Backend) RemoveConnection(conn net.Conn) {
 }
 
 // GetActiveConnections returns the current number of active connections.
-// This method is thread-safe.
 func (b *Backend) GetActiveConnections() int {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -151,7 +140,6 @@ func (b *Backend) GetActiveConnections() int {
 }
 
 // GetStats returns a snapshot of the backend's statistics.
-// Returns: address, alive status, active connections, total connections
 func (b *Backend) GetStats() (string, bool, int, int64) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -160,7 +148,6 @@ func (b *Backend) GetStats() (string, bool, int, int64) {
 }
 
 // GetLastHealthCheck returns the timestamp of the last health check.
-// This method is thread-safe.
 func (b *Backend) GetLastHealthCheck() time.Time {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -168,12 +155,7 @@ func (b *Backend) GetLastHealthCheck() time.Time {
 	return b.LastHealthCheck
 }
 
-// CheckHealth attempts to establish a TCP connection to the backend.
-// If successful, marks the backend as alive.
-// If failed (including SimulatedDown), marks it as dead.
-// The timeout parameter controls how long to wait for the connection.
-//
-// This is the core health check logic used by the health checker goroutine.
+// CheckHealth attempts a TCP connection and updates health status accordingly.
 func (b *Backend) CheckHealth(timeout time.Duration) bool {
 	// Use Dial() to respect SimulatedDown flag
 	conn, err := b.Dial(timeout)
@@ -195,10 +177,7 @@ func (b *Backend) CheckHealth(timeout time.Duration) bool {
 	return false
 }
 
-// Dial creates a new TCP connection to this backend.
-// Returns the connection or an error if the backend is unreachable.
-// Returns ErrBackendDown if the backend is simulated down.
-// This is used by the proxy to establish connections for client requests.
+// Dial creates a TCP connection to the backend, returning ErrBackendDown if simulated down.
 func (b *Backend) Dial(timeout time.Duration) (net.Conn, error) {
 	b.mu.RLock()
 	if b.SimulatedDown {

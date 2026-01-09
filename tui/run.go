@@ -12,14 +12,14 @@ import (
 	"tcp_lb/loadbalancer"
 )
 
-// Run starts the TUI application with all components.
+// Run starts the TUI application with all required components.
 func Run() error {
 	// Ensure TERM is set for WSL2 compatibility
 	if os.Getenv("TERM") == "" {
 		os.Setenv("TERM", "xterm-256color")
 	}
 
-	// Completely silence backend server logs to prevent TUI corruption
+	// Silence all logs to prevent TUI corruption
 	log.SetOutput(io.Discard)
 	log.SetFlags(0)
 
@@ -40,8 +40,7 @@ func Run() error {
 		}
 	}()
 
-	// Start backend servers (silently)
-	// We must use the backends FROM the pool so they share the same sync.Cond and state
+	// Start backend servers (using pool backends for shared state)
 	for _, b := range lb.GetPool().GetBackends() {
 		go func(b *backend.Backend) {
 			backend.StartServer(b)

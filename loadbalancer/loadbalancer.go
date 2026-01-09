@@ -19,8 +19,7 @@ type LoadBalancer struct {
 	healthStop chan struct{}
 }
 
-// New creates a new LoadBalancer with the given configuration.
-// It initializes the backend pool from the config but does NOT start listening.
+// New creates a LoadBalancer from configuration.
 func New(cfg *config.Config) *LoadBalancer {
 	backendPool := backend.NewPool()
 
@@ -39,7 +38,6 @@ func New(cfg *config.Config) *LoadBalancer {
 }
 
 // SetAlgorithm changes the load balancing algorithm.
-// Call this before Start() to use a different algorithm.
 func (lb *LoadBalancer) SetAlgorithm(algo Algorithm) {
 	lb.algorithm = algo
 }
@@ -74,7 +72,6 @@ func (lb *LoadBalancer) Start() error {
 }
 
 // Stop gracefully shuts down the load balancer.
-// It stops accepting new connections and signals the health checker to stop.
 func (lb *LoadBalancer) Stop() error {
 	close(lb.healthStop)
 
@@ -85,9 +82,7 @@ func (lb *LoadBalancer) Stop() error {
 	return nil
 }
 
-// handleConnection processes a single client connection.
-// It selects a backend, establishes a connection to it, and proxies data bidirectionally.
-// If the selected backend fails, it marks it as unhealthy and retries with another backend.
+// handleConnection routes a client connection to a backend using the configured algorithm.
 func (lb *LoadBalancer) handleConnection(clientConn net.Conn) {
 	defer clientConn.Close()
 
@@ -124,7 +119,7 @@ func (lb *LoadBalancer) handleConnection(clientConn net.Conn) {
 	log.Printf("All backends failed, last error: %v", lastErr)
 }
 
-// GetPool returns the backend pool for external access (e.g., stats).
+// GetPool returns the backend pool.
 func (lb *LoadBalancer) GetPool() *backend.Pool {
 	return lb.pool
 }

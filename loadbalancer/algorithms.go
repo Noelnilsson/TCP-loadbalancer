@@ -25,7 +25,6 @@ func NewRoundRobin() *RoundRobin {
 }
 
 // NextBackend returns the next healthy backend in round-robin order.
-// Skips unhealthy backends. Returns nil if no healthy backend exists.
 func (rr *RoundRobin) NextBackend(pool *backend.Pool) *backend.Backend {
 	healthyBackends := pool.GetHealthyBackends()
 	if len(healthyBackends) == 0 {
@@ -42,11 +41,10 @@ func (rr *RoundRobin) NextBackend(pool *backend.Pool) *backend.Backend {
 }
 
 // =============================================================================
-// LEAST CONNECTIONS ALGORITHM (Bonus - Tier 2)
+// LEAST CONNECTIONS ALGORITHM
 // =============================================================================
 
-// LeastConnections routes traffic to the backend with the fewest active connections.
-// This helps distribute load more evenly when requests have varying durations.
+// LeastConnections routes traffic to the backend with fewest active connections.
 type LeastConnections struct {
 	mu sync.Mutex
 }
@@ -56,8 +54,7 @@ func NewLeastConnections() *LeastConnections {
 	return &LeastConnections{}
 }
 
-// NextBackend returns the healthy backend with the fewest active connections.
-// Returns nil if no healthy backend exists.
+// NextBackend returns the backend with fewest active connections.
 func (lc *LeastConnections) NextBackend(pool *backend.Pool) *backend.Backend {
 	lc.mu.Lock()
 	defer lc.mu.Unlock()
@@ -80,11 +77,10 @@ func (lc *LeastConnections) NextBackend(pool *backend.Pool) *backend.Backend {
 }
 
 // =============================================================================
-// WEIGHTED ROUND ROBIN ALGORITHM (Bonus - Tier 2)
+// WEIGHTED ROUND ROBIN ALGORITHM 
 // =============================================================================
 
 // WeightedRoundRobin distributes requests based on backend weights.
-// Backends with higher weights receive proportionally more traffic.
 type WeightedRoundRobin struct {
 	current       int        // Current position in the weighted sequence
 	currentWeight int        // Current weight counter
@@ -99,8 +95,7 @@ func NewWeightedRoundRobin() *WeightedRoundRobin {
 	}
 }
 
-// NextBackend returns the next backend based on weighted round-robin.
-// Backends with higher weights are selected more frequently.
+// NextBackend returns the next backend in weighted round-robin order.
 func (wrr *WeightedRoundRobin) NextBackend(pool *backend.Pool) *backend.Backend {
 	healthyBackends := pool.GetHealthyBackends()
 	if len(healthyBackends) == 0 {

@@ -259,7 +259,7 @@ func (a *App) refreshBackends() {
 	}
 }
 
-// refreshTimers updates both the health check and server pause timers.
+// refreshTimers updates the health check and server pause timers.
 func (a *App) refreshTimers() {
 	var text strings.Builder
 
@@ -319,7 +319,7 @@ func (a *App) refreshTimers() {
 	a.timersView.SetText(text.String())
 }
 
-// updateStatusBar updates the bottom status bar.
+// updateStatusBar updates the status bar with current health and connection info.
 func (a *App) updateStatusBar() {
 	backends := a.pool.GetBackends()
 	healthy := 0
@@ -336,7 +336,7 @@ func (a *App) updateStatusBar() {
 	a.statusBar.SetText(status)
 }
 
-// refreshServerInfo updates the server info panel.
+// refreshServerInfo updates the server info display.
 func (a *App) refreshServerInfo() {
 	a.serverInfo.SetText(fmt.Sprintf(
 		"[yellow::b]Server Info[-:-:-]\n"+
@@ -351,8 +351,7 @@ func (a *App) refreshServerInfo() {
 	))
 }
 
-// sendTraffic sends a test connection through the load balancer.
-// The connection is held for a random duration (10-70 seconds) to simulate real traffic.
+// sendTraffic sends a test connection and holds it for a random duration.
 func (a *App) sendTraffic() {
 	a.addLog("[yellow]→ Connecting...[-]")
 
@@ -394,13 +393,13 @@ func (a *App) sendBurstTraffic(count int) {
 	}
 }
 
-// restartSimulation restarts the backend failure simulation.
+// restartSimulation restarts the failure simulation.
 func (a *App) restartSimulation() {
 	a.pool.RestartSimulation()
 	a.addLog("[cyan]↻ Simulation restarted[-]")
 }
 
-// showAlgorithmModal displays the algorithm selection modal.
+// showAlgorithmModal displays a modal to select the load balancing algorithm.
 func (a *App) showAlgorithmModal() {
 	algorithms := []struct {
 		name string

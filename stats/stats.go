@@ -68,8 +68,7 @@ type BackendStatsResponse struct {
 	TotalConnections  int64  `json:"total_connections"`
 }
 
-// handleStats handles GET /stats requests.
-// Returns JSON with statistics for all backends.
+// handleStats handles /stats requests and returns backend statistics.
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -110,8 +109,7 @@ type HealthResponse struct {
 	Status string `json:"status"`
 }
 
-// handleHealth handles GET /health requests.
-// Returns 200 if at least one backend is healthy, 503 otherwise.
+// handleHealth handles /health requests and reports overall health status.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -186,7 +184,6 @@ func (gs *GlobalStats) AddBytesReceived(bytes int64) {
 }
 
 // GetSnapshot returns a copy of the current statistics.
-// Safe to call from multiple goroutines.
 func (gs *GlobalStats) GetSnapshot() GlobalStats {
 	gs.mu.RLock()
 	defer gs.mu.RUnlock()

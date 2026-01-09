@@ -7,8 +7,7 @@ import (
 	"net"
 )
 
-// StartServer starts a simple echo server on the given address.
-// Blocks until the server is stopped, so run in a goroutine.
+// StartServer starts an echo server on the backend address.
 func StartServer(b *Backend) error {
 	listener, err := net.Listen("tcp", b.getAddress())
 	if err != nil {
@@ -36,8 +35,7 @@ func StartServer(b *Backend) error {
 	}
 }
 
-// handleConnection handles a single client connection.
-// It reads lines from the client and echoes them back with the server ID.
+// handleConnection echoes lines back to the client.
 func handleConnection(conn net.Conn, address string) {
 	defer conn.Close()
 

@@ -8,8 +8,7 @@ import (
 	"time"
 )
 
-// Config holds all configuration for the load balancer.
-// `json:<name>` help maps JSON fields to struct fields
+// Config holds load balancer configuration.
 type Config struct {
 	ListenAddr          string          `json:"listen_addr"`
 	Backends            []BackendConfig `json:"backends"`
@@ -17,14 +16,13 @@ type Config struct {
 	ConnectTimeout      time.Duration   `json:"connect_timeout_seconds"`
 }
 
-// BackendConfig holds configuration for a single backend server.
+// BackendConfig holds backend server configuration.
 type BackendConfig struct {
 	Address string `json:"address"`
 	Weight  int    `json:"weight"`
 }
 
-// LoadConfig reads configuration from a JSON file at the given path.
-// Returns an error if the file cannot be read or parsed.
+// LoadConfig reads configuration from a JSON file.
 func LoadConfig(path string) (*Config, error) {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
@@ -47,8 +45,7 @@ func LoadConfig(path string) (*Config, error) {
 	return config, nil
 }
 
-// DefaultConfig returns a Config with sensible default values.
-// Useful for testing or when no config file is provided.
+// DefaultConfig returns default configuration values.
 func DefaultConfig() *Config {
 	return &Config{
 		ListenAddr: ":8080",

@@ -7,9 +7,7 @@ import (
 	"time"
 )
 
-// Proxy handles bidirectional data transfer between a client and a backend.
-// It copies data in both directions simultaneously until one side closes.
-// When either side closes, both connections are closed to prevent deadlocks.
+// Proxy copies data bidirectionally between client and backend connections.
 func Proxy(client net.Conn, backend net.Conn) error {
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -62,8 +60,7 @@ func (cw *countingWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// ProxyWithStats is like Proxy but also tracks bytes transferred.
-// Returns the number of bytes sent (client->backend) and received (backend->client).
+// ProxyWithStats proxies connections while tracking bytes transferred.
 func ProxyWithStats(client net.Conn, backend net.Conn) (bytesSent int64, bytesReceived int64, err error) {
 	toBackend := &countingWriter{w: backend}
 	toClient := &countingWriter{w: client}
@@ -102,8 +99,7 @@ func ProxyWithStats(client net.Conn, backend net.Conn) (bytesSent int64, bytesRe
 	return toBackend.count, toClient.count, finalErr
 }
 
-// copyData copies data from src to dst until EOF or error.
-// Signals EOF to the other end by calling CloseWrite on TCP connections.
+// copyData copies data from src to dst and signals EOF.
 func copyData(dst net.Conn, src net.Conn, wg *sync.WaitGroup, errCh chan<- error) {
 	defer wg.Done()
 
@@ -118,15 +114,13 @@ func copyData(dst net.Conn, src net.Conn, wg *sync.WaitGroup, errCh chan<- error
 	}
 }
 
-// copyDataWithBuffer is like copyData but uses a custom buffer size.
-// Useful for tuning performance based on expected traffic patterns.
+// copyDataWithBuffer copies data with a custom buffer size.
 func copyDataWithBuffer(dst net.Conn, src net.Conn, bufferSize int) (int64, error) {
 	buf := make([]byte, bufferSize)
 	return io.CopyBuffer(dst, src, buf)
 }
 
 // SetDeadlines sets read/write deadlines on both connections.
-// This prevents connections from hanging forever if one side stops responding.
 func SetDeadlines(client net.Conn, backend net.Conn, timeout int) error {
 	deadline := time.Now().Add(time.Duration(timeout) * time.Second)
 

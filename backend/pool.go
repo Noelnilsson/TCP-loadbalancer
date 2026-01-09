@@ -25,7 +25,6 @@ type PoolEvent struct {
 type EventCallback func(event PoolEvent)
 
 // Pool manages a collection of backend servers.
-// It provides thread-safe access to the backends and tracks which ones are healthy.
 type Pool struct {
 	backends      []*Backend    // All configured backends
 	mu            sync.RWMutex  // Protects the backends slice
@@ -53,7 +52,6 @@ func (p *Pool) SetEventCallback(callback EventCallback) {
 }
 
 // GetPauseState returns the current pause simulation state.
-// Returns: pausedBackend (empty if none), pauseStartTime, pauseDuration, nextPauseTime
 func (p *Pool) GetPauseState() (string, time.Time, time.Duration, time.Time) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -76,16 +74,13 @@ func (p *Pool) emitEvent(eventType EventType, backendAddr string) {
 }
 
 // AddBackend adds a new backend to the pool.
-// This method is thread-safe.
 func (p *Pool) AddBackend(b *Backend) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.backends = append(p.backends, b)
 }
 
-// RemoveBackend removes a backend from the pool by its address.
-// Returns true if the backend was found and removed.
-// This method is thread-safe.
+// RemoveBackend removes a backend from the pool, returning true if found.
 func (p *Pool) RemoveBackend(address string) bool {
 	p.mu.Lock()
 	for i := 0; i < len(p.backends); i++ {
@@ -101,7 +96,6 @@ func (p *Pool) RemoveBackend(address string) bool {
 }
 
 // GetBackends returns a copy of all backends in the pool.
-// This method is thread-safe.
 func (p *Pool) GetBackends() []*Backend {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -113,7 +107,6 @@ func (p *Pool) GetBackends() []*Backend {
 }
 
 // GetHealthyBackends returns only the backends that are currently alive.
-// This method is thread-safe.
 func (p *Pool) GetHealthyBackends() []*Backend {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -128,9 +121,7 @@ func (p *Pool) GetHealthyBackends() []*Backend {
 	return healthy
 }
 
-// GetBackendByAddress finds a backend by its address.
-// Returns nil if not found.
-// This method is thread-safe.
+// GetBackendByAddress finds a backend by address, returning nil if not found.
 func (p *Pool) GetBackendByAddress(address string) *Backend {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -144,6 +135,7 @@ func (p *Pool) GetBackendByAddress(address string) *Backend {
 	return nil
 }
 
+// GetRandomBackend returns a random backend from the pool.
 func (p *Pool) GetRandomBackend() *Backend {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -157,7 +149,6 @@ func (p *Pool) GetRandomBackend() *Backend {
 }
 
 // Size returns the total number of backends in the pool.
-// This method is thread-safe.
 func (p *Pool) Size() int {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -166,7 +157,6 @@ func (p *Pool) Size() int {
 }
 
 // HealthyCount returns the number of currently healthy backends.
-// This method is thread-safe.
 func (p *Pool) HealthyCount() int {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -182,7 +172,6 @@ func (p *Pool) HealthyCount() int {
 }
 
 // simulateRandomBackendFailureAndRecovery simulates a random backend failure and recovery.
-// This method is thread-safe.
 func (p *Pool) simulateRandomBackendFailureAndRecovery() {
 	randomBackend := p.GetRandomBackend()
 	if randomBackend == nil {
@@ -238,9 +227,7 @@ func (p *Pool) SimulateRandomBackendFailureAndRecoveryLoop() {
 	}
 }
 
-// RestartSimulation resets the simulation state.
-// If a backend is currently paused, it will be recovered immediately.
-// The next pause will be scheduled after the initial delay (5 seconds).
+// RestartSimulation resets simulation state and recovers any paused backends.
 func (p *Pool) RestartSimulation() {
 	p.mu.Lock()
 	pausedAddr := p.pausedBackend
@@ -258,8 +245,7 @@ func (p *Pool) RestartSimulation() {
 	}
 }
 
-// MarkAllHealthy sets all backends in the pool to alive status.
-// Useful for initialization or testing.
+// MarkAllHealthy sets all backends to alive status.
 func (p *Pool) MarkAllHealthy() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -270,7 +256,6 @@ func (p *Pool) MarkAllHealthy() {
 }
 
 // GetAllStats returns statistics for all backends.
-// Returns a slice of stats, one per backend.
 func (p *Pool) GetAllStats() []BackendStats {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -291,7 +276,6 @@ func (p *Pool) GetAllStats() []BackendStats {
 }
 
 // BackendStats holds a snapshot of a backend's statistics.
-// Used for reporting and the stats dashboard.
 type BackendStats struct {
 	Address           string
 	Alive             bool

@@ -7,8 +7,6 @@ import (
 )
 
 // startHealthChecker runs periodic health checks on all backends.
-// This method runs in its own goroutine and checks each backend at the configured interval.
-// It stops when it receives a signal on lb.healthStop channel.
 func (lb *LoadBalancer) startHealthChecker() {
 	ticker := time.NewTicker(lb.config.HealthCheckInterval)
 	defer ticker.Stop()
@@ -24,7 +22,6 @@ func (lb *LoadBalancer) startHealthChecker() {
 }
 
 // checkAllBackends performs a health check on every backend in the pool.
-// This is called periodically by the health checker goroutine.
 func (lb *LoadBalancer) checkAllBackends() {
 	backends := lb.pool.GetBackends()
 
